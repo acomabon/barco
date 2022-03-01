@@ -88,6 +88,9 @@ type GenerationGossiper interface {
 	// HasTokenHistoryForToken determines whether the broker has any history matching the token
 	HasTokenHistoryForToken(ordinal int, token Token) (bool, error)
 
+	// Gets the last known generation (not necessary the active one) of a given start token
+	ReadTokenHistory(ordinal int, token Token) (*Generation, error)
+
 	// Compare and sets the generation value to the proposed state
 	SetGenerationAsProposed(ordinal int, newGen *Generation, expectedTx *UUID) error
 
@@ -168,6 +171,20 @@ func (g *gossiper) HasTokenHistoryForToken(ordinal int, token Token) (bool, erro
 	var result bool
 	err = json.NewDecoder(r.Body).Decode(&result)
 	return result, err
+}
+
+func (g *gossiper) ReadTokenHistory(ordinal int, token Token) (*Generation, error) {
+	r, err := g.requestGet(ordinal, fmt.Sprintf(conf.GossipTokenGetHistoryUrl, token))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	var result Generation
+	err = json.NewDecoder(r.Body).Decode(&result)
+	if result.Version == 0 {
+		return nil, nil
+	}
+	return &result, nil
 }
 
 func (g *gossiper) RegisterGenListener(listener GenListener) {

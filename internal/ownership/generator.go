@@ -10,6 +10,7 @@ import (
 	"github.com/barcostreams/barco/internal/interbroker"
 	"github.com/barcostreams/barco/internal/localdb"
 	. "github.com/barcostreams/barco/internal/types"
+	"github.com/barcostreams/barco/internal/utils"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
@@ -86,8 +87,29 @@ func (o *generator) OnRemoteSetAsCommitted(token Token, tx uuid.UUID, origin int
 }
 
 func (o *generator) OnRemoteRangeSplitStart(origin int) error {
-	// TODO: Implement OnRemoteSplitStart
-	return nil
+	topology := o.discoverer.Topology()
+
+	if origin >= len(topology.Brokers) {
+		return utils.CreateErrAndLog(
+			"Received split range request from B%d but topology does not contain it (length: %d)",
+			origin,
+			len(topology.Brokers))
+	}
+
+	if origin != topology.NextBroker().Ordinal {
+		return utils.CreateErrAndLog(
+			"Received split range request from B%d but it's not the next broker",
+			origin,
+			len(topology.Brokers))
+	}
+
+	message := localSplitRangeGenMessage{
+		topology: topology,
+		origin:   origin,
+		result:   make(chan creationError),
+	}
+	o.items <- &message
+	return <-message.result
 }
 
 func (o *generator) StartGenerations() {
@@ -158,8 +180,6 @@ func (o *generator) startNew() {
 	}
 
 	reason := o.determineStartReason()
-
-	log.Debug().Msgf("Start reason %d", reason)
 
 	if reason == scalingUp {
 		// Send a message to broker n-1 to start the process
@@ -234,8 +254,10 @@ func (o *generator) waitForScaleUp(topology *TopologyInfo) {
 			log.Err(err).Msgf("There was an error requesting token range split, retrying")
 		}
 
-		time.Sleep(waitForSplitStep)
+		time.Sleep(utils.Jitter(waitForSplitStep))
 	}
+
+	log.Info().Msgf("Waited %dms for B%d to split ranges", time.Since(start).Milliseconds())
 }
 
 // process Processes events in order.
@@ -284,6 +306,10 @@ func (o *generator) processGeneration(message genMessage) creationError {
 
 	if m, ok := message.(*localFailoverGenMessage); ok {
 		return o.processLocalFailover(m)
+	}
+
+	if m, ok := message.(*localSplitRangeGenMessage); ok {
+		return o.processLocalSplitRange(m)
 	}
 
 	log.Panic().Msg("Unhandled generation internal message type")

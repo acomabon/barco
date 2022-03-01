@@ -28,7 +28,7 @@ type GenerationState interface {
 
 	// SetProposed compares and sets the proposed/accepted generation.
 	//
-	// Checks that the previous tx matches or is null.
+	// Checks that the previous tx matches or is nil.
 	// Also checks that provided gen.version is equal to committed plus one.
 	SetGenerationProposed(gen *Generation, expectedTx *UUID) error
 
@@ -43,6 +43,9 @@ type GenerationState interface {
 
 	// Determines whether there's history matching the token
 	HasTokenHistory(token Token) (bool, error)
+
+	// Gets the last known committed token from the local persistence
+	GetTokenHistory(token Token) (*Generation, error)
 }
 
 // Loads all generations from local storage
@@ -130,6 +133,14 @@ func (d *discoverer) IsTokenInRange(token Token) bool {
 func (d *discoverer) HasTokenHistory(token Token) (bool, error) {
 	result, err := d.localDb.GetGenerationsByToken(token)
 	return len(result) > 0, err
+}
+
+func (d *discoverer) GetTokenHistory(token Token) (*Generation, error) {
+	result, err := d.localDb.GetGenerationsByToken(token)
+	if len(result) == 0 {
+		return nil, err
+	}
+	return &result[0], nil
 }
 
 func (d *discoverer) SetGenerationProposed(gen *Generation, expectedTx *UUID) error {

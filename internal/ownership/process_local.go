@@ -75,7 +75,7 @@ func (o *generator) processLocalMyToken(message *localGenMessage) creationError 
 			"Proposing myself as leader of T%d (%d) in v%d", topology.MyOrdinal(), topology.MyToken(), gen.Version)
 	}
 
-	followerErrors := o.setStateToFollowers(&gen, []error{nil, nil}, readResults)
+	followerErrors := o.setStateToFollowers(&gen, nil, readResults)
 	if followerErrors[0] != nil && followerErrors[1] != nil {
 		return newCreationError("Followers state could not be set to proposed")
 	}
@@ -138,6 +138,10 @@ func (o *generator) setStateToFollowers(
 ) []error {
 	error1 := make(chan error)
 	error2 := make(chan error)
+
+	if previousErrors == nil {
+		previousErrors = []error{nil, nil}
+	}
 
 	setFunc := func(i int, errorChan chan error) {
 		o.setRemoteState(gen.Followers[i], gen, previousErrors[i], readResults[i], errorChan)

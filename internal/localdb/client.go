@@ -32,7 +32,7 @@ type Client interface {
 	// Gets the following (children) generations
 	GenerationsByParent(gen *Generation) ([]Generation, error)
 
-	// TODO: convert to history
+	// Gets the last two (more recent first) stored generation by start token
 	GetGenerationsByToken(token Token) ([]Generation, error)
 
 	// Gets the generation by token and version, returns nil when not found

@@ -70,6 +70,7 @@ func (g *gossiper) acceptHttpConnections() error {
 			router.POST(conf.GossipGenerationSplitUrl, ToPostHandle(g.postGenSplitHandler))
 			router.GET(fmt.Sprintf(conf.GossipTokenInRange, ":token"), ToHandle(g.getTokenInRangeHandler))
 			router.GET(fmt.Sprintf(conf.GossipTokenHasHistoryUrl, ":token"), ToHandle(g.getTokenHasHistoryUrl))
+			router.GET(fmt.Sprintf(conf.GossipTokenGetHistoryUrl, ":token"), ToHandle(g.getTokenHistoryUrl))
 			router.GET(fmt.Sprintf(
 				conf.GossipReadProducerOffsetUrl,
 				":topic",
@@ -215,6 +216,22 @@ func (g *gossiper) getTokenHasHistoryUrl(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Content-Type", contentType)
 	// Encode can't fail for a bool
 	_ = json.NewEncoder(w).Encode(result)
+	return nil
+}
+
+func (g *gossiper) getTokenHistoryUrl(w http.ResponseWriter, r *http.Request, ps httprouter.Params) error {
+	token, err := strconv.ParseInt(strings.TrimSpace(ps.ByName("token")), 10, 64)
+	if err != nil {
+		return err
+	}
+
+	gen, err := g.discoverer.GetTokenHistory(Token(token))
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	PanicIfErr(json.NewEncoder(w).Encode(gen), "Unexpected error when serializing generation")
 	return nil
 }
 

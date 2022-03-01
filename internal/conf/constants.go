@@ -27,6 +27,7 @@ const (
 	GossipGenerationSplitUrl = "/v1/token/split"
 
 	GossipTokenHasHistoryUrl    = "/v1/token/%s/has-history"
+	GossipTokenGetHistoryUrl    = "/v1/token/%s/history"
 	GossipTokenInRange          = "/v1/token/%s/in-range"
 	GossipBrokerIdentifyUrl     = "/v1/broker/identify" // Send/receive my info to the peer
 	GossipHostIsUpUrl           = "/v1/broker/%s/is-up"
