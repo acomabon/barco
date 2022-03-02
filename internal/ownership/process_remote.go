@@ -10,7 +10,16 @@ func (o *generator) processRemoteProposed(m *remoteGenProposedMessage) creationE
 		m.gen.Version,
 		m.gen.Status)
 
-	err := o.discoverer.SetGenerationProposed(m.gen, m.expectedTx)
+	if m.gen2 != nil {
+		log.Debug().Msgf(
+			"Also setting generation for token %d with remote leader B%d version %d as %s",
+			m.gen2.Start,
+			m.gen2.Leader,
+			m.gen2.Version,
+			m.gen2.Status)
+	}
+
+	err := o.discoverer.SetGenerationProposed(m.gen, m.gen2, m.expectedTx)
 	if err != nil {
 		log.Err(err).Msgf(
 			"Failed to set generation for token %d with remote leader B%d version %d as %s",

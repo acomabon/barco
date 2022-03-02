@@ -1,6 +1,7 @@
 package ownership
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"sync/atomic"
@@ -64,10 +65,15 @@ func (o *generator) Init() error {
 	return nil
 }
 
-func (o *generator) OnRemoteSetAsProposed(newGen *Generation, expectedTx *uuid.UUID) error {
+func (o *generator) OnRemoteSetAsProposed(newGen *Generation, newGen2 *Generation, expectedTx *uuid.UUID) error {
+	if newGen2 != nil && newGen2.Status != StatusAccepted {
+		return fmt.Errorf("Multiple generations can only be accepted (not proposed)")
+	}
+
 	// Create message to channel
 	message := remoteGenProposedMessage{
 		gen:        newGen,
+		gen2:       newGen2,
 		expectedTx: expectedTx,
 		result:     make(chan error),
 	}
@@ -98,9 +104,9 @@ func (o *generator) OnRemoteRangeSplitStart(origin int) error {
 
 	if origin != topology.NextBroker().Ordinal {
 		return utils.CreateErrAndLog(
-			"Received split range request from B%d but it's not the next broker",
+			"Received split range request from B%d but it's not the next broker (B%d)",
 			origin,
-			len(topology.Brokers))
+			topology.NextBroker().Ordinal)
 	}
 
 	message := localSplitRangeGenMessage{
@@ -241,6 +247,7 @@ func (o *generator) requestRangeSplit(topology *TopologyInfo) {
 	// Add initial delay based on the position in the ring to minimize concurrent creation collision
 	prevIndex := topology.GetIndex(prevOrdinal)
 	if prevIndex > 0 {
+		// We could wait for node in n-2 to have their generations
 		i := prevIndex / 2 // The ring double the size
 		delay := waitForSplitStep * time.Duration(i)
 		log.Info().Msgf("Waiting %s before requesting range split", delay)
@@ -266,7 +273,7 @@ func (o *generator) requestRangeSplit(topology *TopologyInfo) {
 		time.Sleep(utils.Jitter(waitForSplitStep))
 	}
 
-	log.Info().Msgf("Waited %dms for B%d to split ranges", time.Since(start).Milliseconds())
+	log.Info().Msgf("Waited %dms for B%d to split ranges", time.Since(start).Milliseconds(), prevOrdinal)
 }
 
 // process Processes events in order.

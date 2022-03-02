@@ -242,13 +242,13 @@ func (_m *Discoverer) SetAsCommitted(token types.Token, tx uuid.UUID, origin int
 	return r0
 }
 
-// SetGenerationProposed provides a mock function with given fields: gen, expectedTx
-func (_m *Discoverer) SetGenerationProposed(gen *types.Generation, expectedTx *uuid.UUID) error {
-	ret := _m.Called(gen, expectedTx)
+// SetGenerationProposed provides a mock function with given fields: gen, gen2, expectedTx
+func (_m *Discoverer) SetGenerationProposed(gen *types.Generation, gen2 *types.Generation, expectedTx *uuid.UUID) error {
+	ret := _m.Called(gen, gen2, expectedTx)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*types.Generation, *uuid.UUID) error); ok {
-		r0 = rf(gen, expectedTx)
+	if rf, ok := ret.Get(0).(func(*types.Generation, *types.Generation, *uuid.UUID) error); ok {
+		r0 = rf(gen, gen2, expectedTx)
 	} else {
 		r0 = ret.Error(0)
 	}

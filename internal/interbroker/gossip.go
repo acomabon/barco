@@ -91,8 +91,8 @@ type GenerationGossiper interface {
 	// Gets the last known generation (not necessary the active one) of a given start token
 	ReadTokenHistory(ordinal int, token Token) (*Generation, error)
 
-	// Compare and sets the generation value to the proposed state
-	SetGenerationAsProposed(ordinal int, newGen *Generation, expectedTx *UUID) error
+	// Compare and sets the generation value to the proposed/accepted state
+	SetGenerationAsProposed(ordinal int, newGen *Generation, newGen2 *Generation, expectedTx *UUID) error
 
 	// Compare and sets the generation as committed
 	SetAsCommitted(ordinal int, token Token, tx UUID) error
@@ -396,10 +396,20 @@ func (g *gossiper) ReadProducerOffset(ordinal int, topic *TopicDataId) (uint64, 
 	return value, err
 }
 
-func (g *gossiper) SetGenerationAsProposed(ordinal int, newGen *Generation, expectedTx *UUID) error {
+func (g *gossiper) SetGenerationAsProposed(
+	ordinal int,
+	newGen *Generation,
+	newGen2 *Generation,
+	expectedTx *UUID,
+) error {
 	message := GenerationProposeMessage{
-		Generation: newGen,
-		ExpectedTx: expectedTx,
+		Generation:  newGen,
+		Generation2: newGen2,
+		ExpectedTx:  expectedTx,
+	}
+
+	if newGen2 != nil && newGen2.Status != StatusAccepted {
+		log.Fatal().Msgf("it is only possible to accept two generations at the same time")
 	}
 
 	jsonBody, err := json.Marshal(message)

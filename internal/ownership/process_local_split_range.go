@@ -78,10 +78,34 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 		return err
 	}
 
-	// TODO: Try to heal myCurrentGen.Followers[1]
-
+	// Start accepting flow
 	myGen.Status = StatusAccepted
 	nextTokenGen.Status = StatusAccepted
+
+	// Accept on the new broker
+	if err := o.gossiper.SetGenerationAsProposed(newBrokerOrdinal, &myGen, &nextTokenGen, &tx); err != nil {
+		return wrapCreationError(err)
+	}
+
+	// Accept on the common follower index Bn+2
+	if err := o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[0], &myGen, &nextTokenGen, &tx); err != nil {
+		return wrapCreationError(err)
+	}
+
+	// At this moment, we have a majority of replicas
+
+	// Mark as accepted on index Bn+3, ignore if it fails
+	backgroundDone := make(chan error)
+	go func() {
+		backgroundDone <- o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[1], &myGen, &nextTokenGen, &tx)
+	}()
+
+	// myGen.Status = StatusCommitted
+	// nextTokenGen.Status = StatusCommitted
+
+	log.Info().Msgf(
+		"Setting transaction for T%d v%d and T%d v%d as committed",
+		myGen.Start, myGen.Version, nextTokenGen.Start, nextTokenGen.Version)
 
 	return nil
 }
@@ -104,7 +128,13 @@ func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generatio
 		return nil, newCreationError("Followers state could not be set to proposed")
 	}
 
-	if err := o.discoverer.SetGenerationProposed(myGen, nil); err != nil {
+	backgroundDone := make(chan error)
+	go func() {
+		// Set as gen1 as proposed on Bn+3 (second follower of next token)
+		backgroundDone <- o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[1], myGen, nil, nil)
+	}()
+
+	if err := o.discoverer.SetGenerationProposed(myGen, nil, nil); err != nil {
 		log.Err(err).Msg("Unexpected error when setting as proposed locally")
 		return nil, newNonRetryableError("Unexpected local error")
 	}
@@ -123,7 +153,7 @@ func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generatio
 	}
 
 	// Set state in leader
-	if err := o.gossiper.SetGenerationAsProposed(nextTokenGen.Leader, nextTokenGen, getTx(nextTokenLeaderRead.Proposed)); err != nil {
+	if err := o.gossiper.SetGenerationAsProposed(nextTokenGen.Leader, nextTokenGen, nil, getTx(nextTokenLeaderRead.Proposed)); err != nil {
 		return nil, newCreationError("Next token leader generation state could not be set: %s", err)
 	}
 	nextTokenFollowerErrors := o.setStateToFollowers(nextTokenGen, nil, readResults)
@@ -134,6 +164,8 @@ func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generatio
 	log.Info().Msgf(
 		"Proposed B%d as a leader for T%d-T%d [%d, %d] as part of range splitting",
 		nextTokenGen.Leader, nextTokenGen.Leader, nextTokenGen.Followers[0], nextTokenGen.Start, nextTokenGen.End)
+
+	<-backgroundDone
 	return nil, nil
 }
 

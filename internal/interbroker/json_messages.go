@@ -6,9 +6,12 @@ import (
 )
 
 // Represents the interbroker api json message for proposing and accepting a generation to another broker.
+//
+// It's possible to accept multiple generations as part of the same transaction.
 type GenerationProposeMessage struct {
-	Generation *Generation `json:"generation"`
-	ExpectedTx *UUID       `json:"tx,omitempty"`
+	Generation  *Generation `json:"gen"`
+	Generation2 *Generation `json:"gen2"`
+	ExpectedTx  *UUID       `json:"tx,omitempty"`
 }
 
 // GenerationCommitMessage the interbroker api json message for

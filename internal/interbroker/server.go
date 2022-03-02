@@ -126,15 +126,12 @@ func (g *gossiper) getGenHandler(w http.ResponseWriter, r *http.Request, ps http
 }
 
 func (g *gossiper) postGenProposeHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) error {
-	if _, err := strconv.ParseInt(strings.TrimSpace(ps.ByName("token")), 10, 64); err != nil {
-		return err
-	}
 	var message GenerationProposeMessage
 	if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
 		return err
 	}
 	// Use the registered listener
-	return g.genListener.OnRemoteSetAsProposed(message.Generation, message.ExpectedTx)
+	return g.genListener.OnRemoteSetAsProposed(message.Generation, message.Generation2, message.ExpectedTx)
 }
 
 func (g *gossiper) postGenCommitHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) error {

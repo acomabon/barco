@@ -79,7 +79,7 @@ var _ = Describe("generator", func() {
 			discovererMock := new(Discoverer)
 			discovererMock.On("Topology").Return(&topology)
 			discovererMock.On("GenerationProposed", mock.Anything).Return(nil, nil)
-			discovererMock.On("SetGenerationProposed", mock.Anything, mock.Anything).Return(nil)
+			discovererMock.On("SetGenerationProposed", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			discovererMock.On("SetAsCommitted", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 			gossiperMock := new(Gossiper)
@@ -88,7 +88,7 @@ var _ = Describe("generator", func() {
 				On("GetGenerations", mock.Anything, mock.Anything).
 				Return(interbroker.GenReadResult{})
 			gossiperMock.
-				On("SetGenerationAsProposed", mock.Anything, mock.Anything, mock.Anything).
+				On("SetGenerationAsProposed", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return(nil)
 			gossiperMock.
 				On("SetAsCommitted", mock.Anything, mock.Anything, mock.Anything).

@@ -27,10 +27,11 @@ type GenerationState interface {
 	GenerationProposed(token Token) (committed *Generation, proposed *Generation)
 
 	// SetProposed compares and sets the proposed/accepted generation.
+	// It's possible to accept multiple generations in the same operation by providing gen2.
 	//
 	// Checks that the previous tx matches or is nil.
 	// Also checks that provided gen.version is equal to committed plus one.
-	SetGenerationProposed(gen *Generation, expectedTx *UUID) error
+	SetGenerationProposed(gen *Generation, gen2 *Generation, expectedTx *UUID) error
 
 	// SetAsCommitted sets the transaction as committed, storing the history and
 	// setting the proposed generation as committed
@@ -143,9 +144,13 @@ func (d *discoverer) GetTokenHistory(token Token) (*Generation, error) {
 	return &result[0], nil
 }
 
-func (d *discoverer) SetGenerationProposed(gen *Generation, expectedTx *UUID) error {
+func (d *discoverer) SetGenerationProposed(gen *Generation, gen2 *Generation, expectedTx *UUID) error {
 	defer d.genMutex.Unlock()
 	d.genMutex.Lock()
+
+	if gen2 != nil {
+		return d.acceptMultiple(gen, gen2)
+	}
 
 	var currentTx *UUID = nil
 	if existingGen, ok := d.genProposed[gen.Start]; ok {
@@ -164,23 +169,58 @@ func (d *discoverer) SetGenerationProposed(gen *Generation, expectedTx *UUID) er
 		return fmt.Errorf("Existing proposed does not match: %s (expected %s)", currentTx, expectedTx)
 	}
 
-	// Get existing committed
-	committed := d.Generation(gen.Start)
-
-	if committed != nil && gen.Version <= committed.Version {
-		return fmt.Errorf(
-			"Proposed version is not the next version of committed: committed = %d, proposed = %d",
-			committed.Version,
-			gen.Version)
+	if err := d.validateCommitted(gen); err != nil {
+		return err
 	}
 
 	log.Info().Msgf(
-		"%s version %d with leader %d for range [%d, %d]",
+		"%s version %d with B%d as leader for range [%d, %d]",
 		gen.Status, gen.Version, gen.Leader, gen.Start, gen.End)
 
 	// Replace entire proposed value
 	d.genProposed[gen.Start] = *gen
 
+	return nil
+}
+
+// Verifies that the new generation is greater than the committed version
+func (d *discoverer) validateCommitted(gen *Generation) error {
+	if committed := d.Generation(gen.Start); committed != nil && gen.Version <= committed.Version {
+		return fmt.Errorf(
+			"Proposed version is not the next version of committed: committed = %d, proposed = %d",
+			committed.Version,
+			gen.Version)
+	}
+	return nil
+}
+
+// Marks multiple generations as Accepted. It should be called after acquiring the lock
+func (d *discoverer) acceptMultiple(gen1 *Generation, gen2 *Generation) error {
+	if gen1.Status != StatusAccepted || gen2.Status != StatusAccepted {
+		return fmt.Errorf("Multiple generations can not be proposed, only accepted")
+	}
+
+	if existingGen1, ok := d.genProposed[gen1.Start]; !ok || existingGen1.Tx != gen1.Tx {
+		return fmt.Errorf("Existing proposed for generation #1 does not match: (was found %v)", ok)
+	}
+	if existingGen2, ok := d.genProposed[gen2.Start]; !ok || existingGen2.Tx != gen2.Tx {
+		return fmt.Errorf("Existing proposed for generation #2 does not match: (was found %v)", ok)
+	}
+
+	// Get existing committed
+	if err := d.validateCommitted(gen1); err != nil {
+		return err
+	}
+	if err := d.validateCommitted(gen2); err != nil {
+		return err
+	}
+
+	log.Info().Msgf(
+		"Accepting two generations: [%d, %d] v%d with B%d as leader and [%d, %d] v%d with B%d as leader (B%d as tx leader)",
+		gen1.Start, gen1.End, gen1.Version, gen1.Leader, gen2.Start, gen2.End, gen2.Version, gen2.Leader, gen2.TxLeader)
+
+	d.genProposed[gen1.Start] = *gen1
+	d.genProposed[gen2.Start] = *gen2
 	return nil
 }
 

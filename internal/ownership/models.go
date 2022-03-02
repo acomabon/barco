@@ -46,6 +46,7 @@ func (m *localSplitRangeGenMessage) setResult(err creationError) {
 
 type remoteGenProposedMessage struct {
 	gen        *Generation
+	gen2       *Generation
 	expectedTx *UUID
 	result     chan error
 }

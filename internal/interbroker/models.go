@@ -10,7 +10,7 @@ import (
 
 // Represents a gossip listener to generation-related messages
 type GenListener interface {
-	OnRemoteSetAsProposed(newGen *Generation, expectedTx *UUID) error
+	OnRemoteSetAsProposed(newGen *Generation, newGen2 *Generation, expectedTx *UUID) error
 
 	OnRemoteSetAsCommitted(token Token, tx UUID, origin int) error
 

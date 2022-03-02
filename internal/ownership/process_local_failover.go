@@ -61,11 +61,11 @@ func (o *generator) processLocalFailover(m *localFailoverGenMessage) creationErr
 			"Generation info could not be read from follower: %s", peerFollowerGenInfo.Error.Error())
 	}
 
-	if err := o.discoverer.SetGenerationProposed(&gen, getTx(proposed)); err != nil {
+	if err := o.discoverer.SetGenerationProposed(&gen, nil, getTx(proposed)); err != nil {
 		return wrapCreationError(err)
 	}
 
-	if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, getTx(peerFollowerGenInfo.Proposed)); err != nil {
+	if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, nil, getTx(peerFollowerGenInfo.Proposed)); err != nil {
 		return wrapCreationError(err)
 	}
 
@@ -74,11 +74,11 @@ func (o *generator) processLocalFailover(m *localFailoverGenMessage) creationErr
 		Msgf("Accepting myself as leader of T%d (%d) in v%d", downBroker.Ordinal, token, gen.Version)
 	gen.Status = StatusAccepted
 
-	if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, &gen.Tx); err != nil {
+	if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, nil, &gen.Tx); err != nil {
 		return wrapCreationError(err)
 	}
 
-	if err := o.discoverer.SetGenerationProposed(&gen, &gen.Tx); err != nil {
+	if err := o.discoverer.SetGenerationProposed(&gen, nil, &gen.Tx); err != nil {
 		log.Err(err).Msg("Unexpected error when setting as accepted locally")
 		return newCreationError("Unexpected local error")
 	}

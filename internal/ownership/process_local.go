@@ -85,7 +85,7 @@ func (o *generator) processLocalMyToken(message *localGenMessage) creationError 
 		localTx = &localProposed.Tx
 	}
 
-	if err := o.discoverer.SetGenerationProposed(&gen, localTx); err != nil {
+	if err := o.discoverer.SetGenerationProposed(&gen, nil, localTx); err != nil {
 		log.Err(err).Msg("Unexpected error when setting as proposed locally")
 		// Don't retry
 		return newNonRetryableError("Unexpected local error")
@@ -99,7 +99,7 @@ func (o *generator) processLocalMyToken(message *localGenMessage) creationError 
 		return newCreationError("Followers state could not be set to accepted")
 	}
 
-	if err := o.discoverer.SetGenerationProposed(&gen, &gen.Tx); err != nil {
+	if err := o.discoverer.SetGenerationProposed(&gen, nil, &gen.Tx); err != nil {
 		log.Err(err).Msg("Unexpected error when setting as proposed locally")
 		return newCreationError("Unexpected local error")
 	}
@@ -178,7 +178,7 @@ func (o *generator) setRemoteState(
 
 	if gen.Status != StatusCommitted {
 		// Use proposed CAS
-		errorChan <- o.gossiper.SetGenerationAsProposed(ordinal, gen, tx)
+		errorChan <- o.gossiper.SetGenerationAsProposed(ordinal, gen, nil, tx)
 	} else {
 		// Use committed CAS
 		errorChan <- o.gossiper.SetAsCommitted(ordinal, gen.Start, *tx)
