@@ -40,6 +40,9 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 	version := o.lastKnownVersion(newToken, nextBrokers) + 1
 	log.Debug().Msgf("Identified v%d for T%d (%d)", version, newBrokerOrdinal, newToken)
 
+	// Use the same transaction id for both generations
+	tx := uuid.New()
+
 	myGen := Generation{
 		Start:     myToken,
 		End:       newToken,
@@ -48,7 +51,7 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 		Leader:    topology.MyOrdinal(),
 		Followers: ordinals(nextBrokers[:2]),
 		TxLeader:  topology.MyOrdinal(),
-		Tx:        uuid.New(),
+		Tx:        tx,
 		Status:    StatusProposed,
 		Parents: []GenParent{{
 			Start:   myCurrentGen.Start,
@@ -65,141 +68,77 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 		Leader:    newBrokerOrdinal,
 		Followers: ordinals(nextBrokers[1:3]),
 		TxLeader:  topology.MyOrdinal(),
-		Tx:        myGen.Tx,
+		Tx:        tx,
 		Status:    StatusProposed,
 		Parents:   myGen.Parents,
 	}
 
-	readResults := o.readStateFromFollowers(&myGen)
-	if readResults[0].Error != nil && readResults[1].Error != nil {
-		return newCreationError("Followers state could not be read")
-	}
-	if isInProgress(readResults[0].Proposed) || isInProgress(readResults[1].Proposed) {
-		return newCreationError("In progress generation in remote broker")
-	}
-	nextTokenLeaderRead := o.gossiper.GetGenerations(newBrokerOrdinal, newToken)
-	if nextTokenLeaderRead.Error != nil {
-		return newCreationError("Next token leader generation state could not be read: %s", nextTokenLeaderRead.Error)
+	_, err := o.rangeSplitPropose(&myGen, &nextTokenGen)
+	if err != nil {
+		return err
 	}
 
-	followerErrors := o.setStateToFollowers(&myGen, nil, readResults)
-	if followerErrors[0] != nil && followerErrors[1] != nil {
-		return newCreationError("Followers state could not be set to proposed")
-	}
+	// TODO: Try to heal myCurrentGen.Followers[1]
 
-	if err := o.discoverer.SetGenerationProposed(&myGen, nil); err != nil {
-		log.Err(err).Msg("Unexpected error when setting as proposed locally")
-		return newNonRetryableError("Unexpected local error")
-	}
-
-	log.Info().Msgf(
-		"Proposed myself as a leader for T%d-T%d [%d, %d] as part of range splitting",
-		topology.MyOrdinal(), newBrokerOrdinal, myToken, newToken)
-
-	// Read the state from of nextTokenGen followers
-	readResults = o.readStateFromFollowers(&nextTokenGen)
-	if readResults[0].Error != nil && readResults[1].Error != nil {
-		return newCreationError("Followers state could not be read")
-	}
-	if isInProgress(readResults[0].Proposed) || isInProgress(readResults[1].Proposed) {
-		return newCreationError("In progress generation in remote broker")
-	}
-
-	// Set state in leader
-	if err := o.gossiper.SetGenerationAsProposed(newBrokerOrdinal, &nextTokenGen, getTx(nextTokenLeaderRead.Proposed)); err != nil {
-		return newCreationError("Next token leader generation state could not be set: %s", err)
-	}
-	nextTokenFollowerErrors := o.setStateToFollowers(&nextTokenGen, nil, readResults)
-	if nextTokenFollowerErrors[0] != nil && nextTokenFollowerErrors[1] != nil {
-		return newCreationError("Followers state could not be set to proposed")
-	}
-
-	// isUp, err := o.gossiper.ReadBrokerIsUp(peerFollower, downBroker.Ordinal)
-	// if err != nil {
-	// 	return wrapCreationError(err)
-	// }
-
-	// if isUp {
-	// 	return newCreationError("Broker B%d is still consider as UP by B%d", downBroker.Ordinal, peerFollower)
-	// }
-
-	// token := topology.GetToken(index)
-
-	// gen := Generation{
-	// 	Start:     token,
-	// 	End:       topology.GetToken(index + 1),
-	// 	Version:   m.previousGen.Version + 1,
-	// 	Timestamp: time.Now().UnixMicro(),
-	// 	Leader:    topology.MyOrdinal(),
-	// 	Followers: []int{peerFollower, downBroker.Ordinal},
-	// 	TxLeader:  topology.MyOrdinal(),
-	// 	Tx:        uuid.New(),
-	// 	Status:    StatusProposed,
-	// 	Parents: []GenParent{{
-	// 		Start:   token,
-	// 		Version: m.previousGen.Version,
-	// 	}},
-	// }
-
-	// log.Info().
-	// 	Str("reason", reason).
-	// 	Msgf("Proposing myself as leader of T%d (%d) in v%d", downBroker.Ordinal, token, gen.Version)
-
-	// committed, proposed := o.discoverer.GenerationProposed(token)
-
-	// if !reflect.DeepEqual(m.previousGen, committed) {
-	// 	log.Info().Msgf("New committed generation found, aborting creation")
-	// 	return nil
-	// }
-
-	// peerFollowerGenInfo := o.gossiper.GetGenerations(peerFollower, gen.Start)
-	// if peerFollowerGenInfo.Error != nil {
-	// 	return newCreationError(
-	// 		"Generation info could not be read from follower: %s", peerFollowerGenInfo.Error.Error())
-	// }
-
-	// if err := o.discoverer.SetGenerationProposed(&gen, getTx(proposed)); err != nil {
-	// 	return wrapCreationError(err)
-	// }
-
-	// if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, getTx(peerFollowerGenInfo.Proposed)); err != nil {
-	// 	return wrapCreationError(err)
-	// }
-
-	// log.Info().
-	// 	Str("reason", reason).
-	// 	Msgf("Accepting myself as leader of T%d (%d) in v%d", downBroker.Ordinal, token, gen.Version)
-	// gen.Status = StatusAccepted
-
-	// if err := o.gossiper.SetGenerationAsProposed(peerFollower, &gen, &gen.Tx); err != nil {
-	// 	return wrapCreationError(err)
-	// }
-
-	// if err := o.discoverer.SetGenerationProposed(&gen, &gen.Tx); err != nil {
-	// 	log.Err(err).Msg("Unexpected error when setting as accepted locally")
-	// 	return newCreationError("Unexpected local error")
-	// }
-
-	// // Now we have a majority of replicas
-	// log.Info().
-	// 	Str("reason", reason).
-	// 	Msgf("Setting transaction for T%d (%d) as committed", downBroker.Ordinal, token)
-
-	// // We can now start receiving producer traffic for this token
-	// if err := o.discoverer.SetAsCommitted(gen.Start, gen.Tx, topology.MyOrdinal()); err != nil {
-	// 	log.Err(err).Msg("Set as committed locally failed (probably local db related)")
-	// 	return newCreationError("Set as committed locally failed")
-	// }
-	// o.gossiper.SetAsCommitted(peerFollower, gen.Start, gen.Tx)
+	myGen.Status = StatusAccepted
+	nextTokenGen.Status = StatusAccepted
 
 	return nil
 }
 
-// func (o *generator) splitPropose() {
+func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generation) (*splitProposeResult, creationError) {
+	readResults := o.readStateFromFollowers(myGen)
+	if readResults[0].Error != nil && readResults[1].Error != nil {
+		return nil, newCreationError("Followers state could not be read")
+	}
+	if isInProgress(readResults[0].Proposed) || isInProgress(readResults[1].Proposed) {
+		return nil, newCreationError("In progress generation in remote broker")
+	}
+	nextTokenLeaderRead := o.gossiper.GetGenerations(nextTokenGen.Leader, nextTokenGen.Start)
+	if nextTokenLeaderRead.Error != nil {
+		return nil, newCreationError("Next token leader generation state could not be read: %s", nextTokenLeaderRead.Error)
+	}
 
-// }
+	followerErrors := o.setStateToFollowers(myGen, nil, readResults)
+	if followerErrors[0] != nil && followerErrors[1] != nil {
+		return nil, newCreationError("Followers state could not be set to proposed")
+	}
 
-// type splitPropose
+	if err := o.discoverer.SetGenerationProposed(myGen, nil); err != nil {
+		log.Err(err).Msg("Unexpected error when setting as proposed locally")
+		return nil, newNonRetryableError("Unexpected local error")
+	}
+
+	log.Debug().Msgf(
+		"Proposed myself as a leader for T%d-T%d [%d, %d] as part of range splitting",
+		myGen.Leader, nextTokenGen.Leader, myGen.Start, myGen.End)
+
+	// Read the state from of nextTokenGen followers
+	readResults = o.readStateFromFollowers(nextTokenGen)
+	if readResults[0].Error != nil && readResults[1].Error != nil {
+		return nil, newCreationError("Followers state could not be read")
+	}
+	if isInProgress(readResults[0].Proposed) || isInProgress(readResults[1].Proposed) {
+		return nil, newCreationError("In progress generation in remote broker")
+	}
+
+	// Set state in leader
+	if err := o.gossiper.SetGenerationAsProposed(nextTokenGen.Leader, nextTokenGen, getTx(nextTokenLeaderRead.Proposed)); err != nil {
+		return nil, newCreationError("Next token leader generation state could not be set: %s", err)
+	}
+	nextTokenFollowerErrors := o.setStateToFollowers(nextTokenGen, nil, readResults)
+	if nextTokenFollowerErrors[0] != nil && nextTokenFollowerErrors[1] != nil {
+		return nil, newCreationError("Followers state could not be set to proposed")
+	}
+
+	log.Info().Msgf(
+		"Proposed B%d as a leader for T%d-T%d [%d, %d] as part of range splitting",
+		nextTokenGen.Leader, nextTokenGen.Leader, nextTokenGen.Followers[0], nextTokenGen.Start, nextTokenGen.End)
+	return nil, nil
+}
+
+type splitProposeResult struct {
+}
 
 func (o *generator) lastKnownVersion(token Token, peers []BrokerInfo) GenVersion {
 	version := GenVersion(0)

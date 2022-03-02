@@ -185,7 +185,7 @@ func (o *generator) startNew() {
 		// Send a message to broker n-1 to start the process
 		// of splitting the token range
 		log.Info().Msgf("Broker considered as scaling up")
-		o.waitForScaleUp(topology)
+		o.requestRangeSplit(topology)
 
 		return
 	}
@@ -234,11 +234,20 @@ func (o *generator) waitForPreviousRange(topology *TopologyInfo) {
 // Sends a message to the broker in the position n-1 to request token split and waits for generation creation/
 //
 // It panics when after waiting for a long time
-func (o *generator) waitForScaleUp(topology *TopologyInfo) {
+func (o *generator) requestRangeSplit(topology *TopologyInfo) {
 	token := topology.MyToken()
 	prevOrdinal := topology.PreviousBroker().Ordinal
-	start := time.Now()
 
+	// Add initial delay based on the position in the ring to minimize concurrent creation collision
+	prevIndex := topology.GetIndex(prevOrdinal)
+	if prevIndex > 0 {
+		i := prevIndex / 2 // The ring double the size
+		delay := waitForSplitStep * time.Duration(i)
+		log.Info().Msgf("Waiting %s before requesting range split", delay)
+		time.Sleep(delay)
+	}
+
+	start := time.Now()
 	for o.discoverer.Generation(token) == nil {
 		log.Info().Msgf("Sending message to previous broker B%d to request token range split", prevOrdinal)
 
