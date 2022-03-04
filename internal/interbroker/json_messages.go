@@ -17,8 +17,10 @@ type GenerationProposeMessage struct {
 // GenerationCommitMessage the interbroker api json message for
 // committing a generation to another broker.
 type GenerationCommitMessage struct {
-	Tx     UUID `json:"tx"`
-	Origin int  `json:"origin"` // The ordinal of the originator of the transaction
+	Tx     UUID   `json:"tx"`
+	Token1 Token  `json:"token1"`
+	Token2 *Token `json:"token2,omitempty"`
+	Origin int    `json:"origin"` // The ordinal of the originator of the transaction
 }
 
 type ConsumerGroupInfoMessage struct {

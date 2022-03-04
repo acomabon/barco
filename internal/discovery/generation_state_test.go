@@ -143,7 +143,7 @@ var _ = Describe("GenerationState", func() {
 			}
 			s.genProposed[gen.Start] = gen
 
-			err := s.SetAsCommitted(gen.Start, gen.Tx, 3)
+			err := s.SetAsCommitted(gen.Start, nil, gen.Tx, 3)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(s.genProposed).To(HaveLen(0))
 
@@ -158,8 +158,8 @@ var _ = Describe("GenerationState", func() {
 			s := state()
 			tx := Must(NewRandom())
 
-			err := s.SetAsCommitted(Token(123), tx, 2)
-			Expect(err).To(MatchError("No proposed value found"))
+			err := s.SetAsCommitted(Token(123), nil, tx, 2)
+			Expect(err).To(MatchError("No proposed value found for token 123"))
 		})
 
 		It("should error when transaction does not match", func() {
@@ -173,15 +173,17 @@ var _ = Describe("GenerationState", func() {
 			}
 			s.genProposed[gen.Start] = gen
 
-			err := s.SetAsCommitted(gen.Start, Must(NewRandom()), 4)
+			err := s.SetAsCommitted(gen.Start, nil, Must(NewRandom()), 4)
 			Expect(err).To(MatchError("Transaction does not match"))
 		})
+
+		XIt("should commit multiple")
 	})
 })
 
 func state() *discoverer {
 	dbClient := new(mocks.Client)
-	dbClient.On("CommitGeneration", mock.Anything).Return(nil)
+	dbClient.On("CommitGeneration", mock.Anything, mock.Anything).Return(nil)
 	return NewDiscoverer(nil, dbClient).(*discoverer)
 }
 

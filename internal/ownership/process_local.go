@@ -108,7 +108,7 @@ func (o *generator) processLocalMyToken(message *localGenMessage) creationError 
 	log.Info().Msgf("Setting transaction for T%d (%d) as committed", topology.MyOrdinal(), topology.MyToken())
 
 	// We can now start receiving producer traffic for this token
-	if err := o.discoverer.SetAsCommitted(gen.Start, gen.Tx, topology.MyOrdinal()); err != nil {
+	if err := o.discoverer.SetAsCommitted(gen.Start, nil, gen.Tx, topology.MyOrdinal()); err != nil {
 		log.Err(err).Msg("Set as committed locally failed (probably local db related)")
 		return newCreationError("Set as committed locally failed")
 	}
@@ -181,7 +181,7 @@ func (o *generator) setRemoteState(
 		errorChan <- o.gossiper.SetGenerationAsProposed(ordinal, gen, nil, tx)
 	} else {
 		// Use committed CAS
-		errorChan <- o.gossiper.SetAsCommitted(ordinal, gen.Start, *tx)
+		errorChan <- o.gossiper.SetAsCommitted(ordinal, gen.Start, nil, *tx)
 	}
 }
 

@@ -228,13 +228,13 @@ func (_m *Discoverer) RegisterListener(l discovery.TopologyChangeListener) {
 	_m.Called(l)
 }
 
-// SetAsCommitted provides a mock function with given fields: token, tx, origin
-func (_m *Discoverer) SetAsCommitted(token types.Token, tx uuid.UUID, origin int) error {
-	ret := _m.Called(token, tx, origin)
+// SetAsCommitted provides a mock function with given fields: token1, token2, tx, origin
+func (_m *Discoverer) SetAsCommitted(token1 types.Token, token2 *types.Token, tx uuid.UUID, origin int) error {
+	ret := _m.Called(token1, token2, tx, origin)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(types.Token, uuid.UUID, int) error); ok {
-		r0 = rf(token, tx, origin)
+	if rf, ok := ret.Get(0).(func(types.Token, *types.Token, uuid.UUID, int) error); ok {
+		r0 = rf(token1, token2, tx, origin)
 	} else {
 		r0 = ret.Error(0)
 	}

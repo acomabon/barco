@@ -32,11 +32,14 @@ func (o *generator) processRemoteProposed(m *remoteGenProposedMessage) creationE
 }
 
 func (o *generator) processRemoteCommitted(m *remoteGenCommittedMessage) creationError {
-	log.Debug().Msgf("Setting generation for token %d tx %s as committed", m.token, m.tx)
+	log.Debug().Msgf("Setting generation for token %d tx %s as committed", m.token1, m.tx)
+	if m.token2 != nil {
+		log.Debug().Msgf("Also setting generation for token %d tx %s as committed", m.token2, m.tx)
+	}
 
-	err := o.discoverer.SetAsCommitted(m.token, m.tx, m.origin)
+	err := o.discoverer.SetAsCommitted(m.token1, m.token2, m.tx, m.origin)
 	if err != nil {
-		log.Err(err).Msgf("Failed to set generation for token %d tx %s as committed", m.token, m.tx)
+		log.Err(err).Msgf("Failed to set generation for token %d tx %s as committed", m.token1, m.tx)
 	}
 	return wrapIfErr(err)
 }

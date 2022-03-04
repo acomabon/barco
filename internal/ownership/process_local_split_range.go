@@ -1,6 +1,7 @@
 package ownership
 
 import (
+	"sync"
 	"time"
 
 	. "github.com/barcostreams/barco/internal/types"
@@ -86,6 +87,10 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 	if err := o.gossiper.SetGenerationAsProposed(newBrokerOrdinal, &myGen, &nextTokenGen, &tx); err != nil {
 		return wrapCreationError(err)
 	}
+	// Accept locally
+	if err := o.discoverer.SetGenerationProposed(&myGen, &nextTokenGen, &tx); err != nil {
+		return newNonRetryableError("Unexpected error when accepting split locally: %s", err)
+	}
 
 	// Accept on the common follower index Bn+2
 	if err := o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[0], &myGen, &nextTokenGen, &tx); err != nil {
@@ -100,12 +105,27 @@ func (o *generator) processLocalSplitRange(m *localSplitRangeGenMessage) creatio
 		backgroundDone <- o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[1], &myGen, &nextTokenGen, &tx)
 	}()
 
-	// myGen.Status = StatusCommitted
-	// nextTokenGen.Status = StatusCommitted
-
 	log.Info().Msgf(
 		"Setting transaction for T%d v%d and T%d v%d as committed",
-		myGen.Start, myGen.Version, nextTokenGen.Start, nextTokenGen.Version)
+		topology.MyOrdinal(), myGen.Version, newBrokerOrdinal, nextTokenGen.Version)
+
+	if err := o.discoverer.SetAsCommitted(myToken, &newToken, tx, topology.MyOrdinal()); err != nil {
+		return wrapCreationError(err)
+	}
+
+	<-backgroundDone
+	var wg sync.WaitGroup
+	for _, b := range nextBrokers {
+		ordinal := b.Ordinal
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := o.gossiper.SetAsCommitted(ordinal, myToken, &newToken, tx); err != nil {
+				log.Err(err).Msgf("There was an error when committing on B%d", ordinal)
+			}
+		}()
+	}
+	wg.Wait()
 
 	return nil
 }
@@ -134,7 +154,12 @@ func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generatio
 		backgroundDone <- o.gossiper.SetGenerationAsProposed(nextTokenGen.Followers[1], myGen, nil, nil)
 	}()
 
-	if err := o.discoverer.SetGenerationProposed(myGen, nil, nil); err != nil {
+	// Proposing locally, one at a time as it might have different original transactions
+	if err := o.discoverer.SetGenerationProposed(myGen, nil, o.getLocalTx(myGen.Start)); err != nil {
+		log.Err(err).Msg("Unexpected error when setting as proposed locally")
+		return nil, newNonRetryableError("Unexpected local error")
+	}
+	if err := o.discoverer.SetGenerationProposed(nextTokenGen, nil, o.getLocalTx(nextTokenGen.Start)); err != nil {
 		log.Err(err).Msg("Unexpected error when setting as proposed locally")
 		return nil, newNonRetryableError("Unexpected local error")
 	}
@@ -167,6 +192,14 @@ func (o *generator) rangeSplitPropose(myGen *Generation, nextTokenGen *Generatio
 
 	<-backgroundDone
 	return nil, nil
+}
+
+func (o *generator) getLocalTx(token Token) *uuid.UUID {
+	_, proposed := o.discoverer.GenerationProposed(token)
+	if proposed == nil {
+		return nil
+	}
+	return &proposed.Tx
 }
 
 type splitProposeResult struct {

@@ -81,9 +81,10 @@ func (o *generator) OnRemoteSetAsProposed(newGen *Generation, newGen2 *Generatio
 	return <-message.result
 }
 
-func (o *generator) OnRemoteSetAsCommitted(token Token, tx uuid.UUID, origin int) error {
+func (o *generator) OnRemoteSetAsCommitted(token1 Token, token2 *Token, tx uuid.UUID, origin int) error {
 	message := remoteGenCommittedMessage{
-		token:  token,
+		token1: token1,
+		token2: token2,
 		tx:     tx,
 		origin: origin,
 		result: make(chan error),

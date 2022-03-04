@@ -56,7 +56,8 @@ func (m *remoteGenProposedMessage) setResult(err creationError) {
 }
 
 type remoteGenCommittedMessage struct {
-	token  Token
+	token1 Token
+	token2 *Token
 	tx     UUID
 	origin int
 	result chan error

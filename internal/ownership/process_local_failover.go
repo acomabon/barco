@@ -89,11 +89,11 @@ func (o *generator) processLocalFailover(m *localFailoverGenMessage) creationErr
 		Msgf("Setting transaction for T%d (%d) as committed", downBroker.Ordinal, token)
 
 	// We can now start receiving producer traffic for this token
-	if err := o.discoverer.SetAsCommitted(gen.Start, gen.Tx, topology.MyOrdinal()); err != nil {
+	if err := o.discoverer.SetAsCommitted(gen.Start, nil, gen.Tx, topology.MyOrdinal()); err != nil {
 		log.Err(err).Msg("Set as committed locally failed (probably local db related)")
 		return newCreationError("Set as committed locally failed")
 	}
-	o.gossiper.SetAsCommitted(peerFollower, gen.Start, gen.Tx)
+	o.gossiper.SetAsCommitted(peerFollower, gen.Start, nil, gen.Tx)
 
 	return nil
 }

@@ -37,7 +37,7 @@ type GenerationState interface {
 	// setting the proposed generation as committed
 	//
 	// Returns an error when transaction does not match
-	SetAsCommitted(token Token, tx UUID, origin int) error
+	SetAsCommitted(token1 Token, token2 *Token, tx UUID, origin int) error
 
 	// Determines whether there's active range containing (but not starting) the token
 	IsTokenInRange(token Token) bool
@@ -215,48 +215,73 @@ func (d *discoverer) acceptMultiple(gen1 *Generation, gen2 *Generation) error {
 		return err
 	}
 
-	log.Info().Msgf(
-		"Accepting two generations: [%d, %d] v%d with B%d as leader and [%d, %d] v%d with B%d as leader (B%d as tx leader)",
-		gen1.Start, gen1.End, gen1.Version, gen1.Leader, gen2.Start, gen2.End, gen2.Version, gen2.Leader, gen2.TxLeader)
-
 	d.genProposed[gen1.Start] = *gen1
 	d.genProposed[gen2.Start] = *gen2
+
+	log.Info().Msgf(
+		"Accepted two generations: [%d, %d] v%d with B%d as leader and [%d, %d] v%d with B%d as leader (B%d as tx leader)",
+		gen1.Start, gen1.End, gen1.Version, gen1.Leader, gen2.Start, gen2.End, gen2.Version, gen2.Leader, gen2.TxLeader)
 	return nil
 }
 
-func (d *discoverer) SetAsCommitted(token Token, tx UUID, origin int) error {
+func (d *discoverer) SetAsCommitted(token1 Token, token2 *Token, tx UUID, origin int) error {
 	defer d.genMutex.Unlock()
 	d.genMutex.Lock()
 
+	var gen2 *Generation
+
 	// Set the transaction and the generation value as committed
-	gen, ok := d.genProposed[token]
-
+	gen1, ok := d.genProposed[token1]
 	if !ok {
-		return fmt.Errorf("No proposed value found")
+		return fmt.Errorf("No proposed value found for token %d", token1)
 	}
-
-	if gen.Tx != tx {
+	if gen1.Tx != tx {
 		return fmt.Errorf("Transaction does not match")
 	}
 
-	log.Info().Msgf(
-		"Setting committed version %d with leader %d for range [%d, %d]", gen.Version, gen.Leader, gen.Start, gen.End)
-	gen.Status = StatusCommitted
+	if token2 != nil {
+		if g, ok := d.genProposed[*token2]; !ok {
+			return fmt.Errorf("No proposed value found for token %d", *token2)
+		} else if g.Tx != tx {
+			return fmt.Errorf("Transaction does not match")
+		} else {
+			gen2 = &g
+		}
+	}
+
+	gen1.Status = StatusCommitted
+
+	if gen2 == nil {
+		log.Info().Msgf(
+			"Committing [%d, %d] v%d with B%d as leader", gen1.Start, gen1.End, gen1.Version, gen1.Leader)
+	} else {
+		log.Info().Msgf(
+			"Committing both [%d, %d] v%d with B%d as leader and [%d, %d] v%d with B%d as leader",
+			gen1.Start, gen1.End, gen1.Version, gen1.Leader,
+			gen2.Start, gen2.End, gen2.Version, gen2.Leader)
+		gen2.Status = StatusCommitted
+	}
+
+	if gen2 != nil {
+	}
 
 	// Store the history and the tx table first
 	// that way db failures don't affect local state
-	if err := d.localDb.CommitGeneration(&gen); err != nil {
+	if err := d.localDb.CommitGeneration(&gen1, gen2); err != nil {
 		return err
 	}
 
-	copyAndStore(&d.generations, gen)
+	copyAndStore(&d.generations, gen1, gen2)
 
 	// Remove from proposed
-	delete(d.genProposed, token)
+	delete(d.genProposed, token1)
+	if token2 != nil {
+		delete(d.genProposed, *token2)
+	}
 	return nil
 }
 
-func copyAndStore(generations *atomic.Value, gen Generation) {
+func copyAndStore(generations *atomic.Value, gen Generation, gen2 *Generation) {
 	existingMap := generations.Load().(genMap)
 
 	// Shallow copy existing
@@ -267,8 +292,14 @@ func copyAndStore(generations *atomic.Value, gen Generation) {
 
 	if !gen.ToDelete {
 		newMap[gen.Start] = gen
+		if gen2 != nil {
+			newMap[gen2.Start] = *gen2
+		}
 	} else {
 		delete(newMap, gen.Start)
+		if gen2 != nil {
+			delete(newMap, gen2.Start)
+		}
 	}
 	generations.Store(newMap)
 }

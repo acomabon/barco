@@ -95,7 +95,7 @@ type GenerationGossiper interface {
 	SetGenerationAsProposed(ordinal int, newGen *Generation, newGen2 *Generation, expectedTx *UUID) error
 
 	// Compare and sets the generation as committed
-	SetAsCommitted(ordinal int, token Token, tx UUID) error
+	SetAsCommitted(ordinal int, token1 Token, token2 *Token, tx UUID) error
 
 	// Sends a request to the previous broker to start the process of splitting its token range
 	RangeSplitStart(ordinal int) error
@@ -422,9 +422,11 @@ func (g *gossiper) SetGenerationAsProposed(
 	return err
 }
 
-func (g *gossiper) SetAsCommitted(ordinal int, token Token, tx UUID) error {
+func (g *gossiper) SetAsCommitted(ordinal int, token1 Token, token2 *Token, tx UUID) error {
 	message := GenerationCommitMessage{
 		Tx:     tx,
+		Token1: token1,
+		Token2: token2,
 		Origin: g.discoverer.Topology().MyOrdinal(),
 	}
 	jsonBody, err := json.Marshal(message)
@@ -432,7 +434,12 @@ func (g *gossiper) SetAsCommitted(ordinal int, token Token, tx UUID) error {
 		log.Fatal().Err(err).Msgf("json marshalling failed when setting generation as committed")
 	}
 
-	r, err := g.requestPost(ordinal, fmt.Sprintf(conf.GossipGenerationCommmitUrl, token), jsonBody)
+	tokenParam := token1.String()
+	if token2 != nil {
+		tokenParam += token2.String()
+	}
+
+	r, err := g.requestPost(ordinal, fmt.Sprintf(conf.GossipGenerationCommmitUrl, tokenParam), jsonBody)
 	defer bodyClose(r)
 	return err
 }

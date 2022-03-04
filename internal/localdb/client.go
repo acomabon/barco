@@ -18,7 +18,7 @@ type Client interface {
 	// Determines whether the local db was not present and had to be created
 	DbWasNewlyCreated() bool
 
-	CommitGeneration(generation *Generation) error
+	CommitGeneration(gen1 *Generation, gen2 *Generation) error
 
 	// Stores the group offset for a topic and token+index
 	SaveOffset(offsetKv *OffsetStoreKeyValue) error
